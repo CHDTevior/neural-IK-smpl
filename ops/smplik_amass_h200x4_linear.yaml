@@ -1,0 +1,27 @@
+base_config: posing_smpl
+parameters:
+  model.logging.path: "./logs/protores_amass_h200x4_linear"
+  model.logging.name: "seed-${model.seed}_h200x4_global_batch-8192_lr-0.0008"
+  model.logging.export_period: 0
+  model.seed: 0
+  model.min_effectors_count: 3
+  model.max_effectors_count: 16
+  model.trainer.overfit_batches: 0
+  model.trainer.num_nodes: 4
+  model.trainer.gpus: 1
+  model.trainer.accelerator: "ddp"
+  model.trainer.precision: 32
+  model.trainer.accumulate_grad_batches: 1
+  model.trainer.replace_sampler_ddp: True
+  model.dataset.name: "amass_gender_augment_cache_v1"
+  model.dataset.batch_size: 2048
+  model.dataset.num_workers: 4
+  model.dataset.rotate: True
+  model.dataset.translate: False
+  model.dataset.augment_training: True
+  model.dataset.augment_validation: False
+  model.trainer.max_epochs: 120
+  model.backbone.num_blocks_stage1: 3
+  model.backbone.num_blocks_stage2: "${model.backbone.num_blocks_stage1}"
+  model.optimizer.lr: 0.0008
+  model.use_pos_loss: False

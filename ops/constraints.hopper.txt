@@ -1,0 +1,3 @@
+# Hopper-only DDP compatibility delta. The canonical A100 environment remains
+# pinned by ops/constraints.compat.txt.
+torchmetrics==0.4.1

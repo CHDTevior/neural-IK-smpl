@@ -1,0 +1,21 @@
+# Upstream clone created by setup.sh (non-commercial academic license; never committed here)
+smpl-ik/
+
+# Model weights, datasets, exports (separate licenses / too large)
+*.ckpt
+*.feather
+*.onnx
+*.pkl
+*.npz
+logs/
+datasets/
+tools/smpl/models/
+
+# Runtime noise
+__pycache__/
+*.pyc
+*.log
+
+# Secrets and tunnel state (demo auth is env-driven; never commit these)
+auth_secret*
+tunnel*

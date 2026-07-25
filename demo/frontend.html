@@ -1,0 +1,1445 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SMPL-IK 实时演示</title>
+<style>
+/* ---------- design tokens (dark default) ---------- */
+:root{
+  --bg:#0F1319; --panel:#171D26; --ink:#E9ECF2; --muted:#8B95A6;
+  --line:#2A3340; --mesh:#6B7688; --accent:#F0A044; --eff:#4FD1B5;
+  --danger:#E5636D;
+  --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme: light){
+  :root{
+    --bg:#EFF1F4; --panel:#ffffff; --ink:#1B2129; --muted:#5C6675;
+    --line:#D8DDE5; --accent:#C97A17; --eff:#0F8D77;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0F1319; --panel:#171D26; --ink:#E9ECF2; --muted:#8B95A6;
+  --line:#2A3340; --accent:#F0A044; --eff:#4FD1B5;
+}
+:root[data-theme="light"]{
+  --bg:#EFF1F4; --panel:#ffffff; --ink:#1B2129; --muted:#5C6675;
+  --line:#D8DDE5; --accent:#C97A17; --eff:#0F8D77;
+}
+*{box-sizing:border-box; margin:0; padding:0}
+html,body{height:100%}
+body{
+  background:var(--bg); color:var(--ink);
+  font:14px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,"PingFang SC","Microsoft YaHei",sans-serif;
+  display:flex; flex-direction:column; overflow:hidden;
+}
+.num{font-family:var(--mono); font-variant-numeric:tabular-nums}
+:focus-visible{outline:2px solid var(--accent); outline-offset:2px}
+
+/* ---------- header ---------- */
+header{
+  display:flex; align-items:center; gap:12px;
+  padding:10px 16px; border-bottom:1px solid var(--line); background:var(--panel);
+  flex:0 0 auto;
+}
+header h1{font-size:15px; font-weight:600; letter-spacing:.02em}
+header .spacer{flex:1}
+.chip{
+  display:inline-flex; align-items:center; gap:6px;
+  padding:3px 10px; border:1px solid var(--line); border-radius:999px;
+  font-size:12px; color:var(--muted); background:var(--bg);
+}
+.chip .num{color:var(--ink)}
+.chip.busy{animation:pulse 1s ease-in-out infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.45}}
+@media (prefers-reduced-motion: reduce){ .chip.busy{animation:none; opacity:.7} }
+.dot{width:9px; height:9px; border-radius:50%; background:var(--muted); flex:0 0 auto}
+.dot.ok{background:var(--eff)}
+.dot.warn{background:var(--accent)}
+.dot.err{background:var(--danger)}
+#statusText{font-size:12px; color:var(--muted)}
+
+/* ---------- layout ---------- */
+main{flex:1; display:flex; min-height:0}
+#viewport{flex:1; position:relative; min-width:0; background:var(--bg)}
+#glcanvas{position:absolute; inset:0; width:100%; height:100%; display:block; touch-action:none}
+#hint{
+  position:absolute; left:12px; bottom:10px; font-size:11px; color:var(--muted);
+  pointer-events:none; user-select:none;
+}
+#overlay{
+  position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
+  background:color-mix(in srgb, var(--bg) 72%, transparent);
+}
+#overlay .card{
+  background:var(--panel); border:1px solid var(--line); border-radius:10px;
+  padding:22px 28px; text-align:center; max-width:320px;
+}
+#overlay .card .big{font-size:15px; margin-bottom:8px}
+#overlay .card .sub{font-size:12px; color:var(--muted)}
+#overlay.hidden{display:none}
+
+/* ---------- rail ---------- */
+#rail{
+  width:320px; flex:0 0 320px; overflow-y:auto; overflow-x:hidden;
+  background:var(--panel); border-left:1px solid var(--line);
+  display:flex; flex-direction:column;
+}
+section{border-bottom:1px solid var(--line); padding:12px 14px}
+section h2{
+  font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:.08em;
+  color:var(--muted); margin-bottom:10px;
+}
+.row{display:flex; align-items:center; gap:8px}
+.grow{flex:1}
+
+/* samples */
+#samples{display:grid; grid-template-columns:1fr 1fr; gap:8px}
+.sample-card{
+  border:1px solid var(--line); border-radius:8px; background:var(--bg);
+  padding:8px 10px; cursor:pointer; text-align:left; color:var(--ink); font:inherit;
+}
+.sample-card:hover{border-color:var(--accent)}
+.sample-card.active{border-color:var(--accent); box-shadow:0 0 0 1px var(--accent) inset}
+.sample-card .id{font-size:13px; font-weight:600}
+.sample-card .sub{font-size:11px; color:var(--muted); margin-top:2px}
+
+/* joint constraint rows */
+.eff-row{
+  border:1px solid var(--line); border-radius:8px; background:var(--bg);
+  padding:8px 10px; margin-bottom:8px; cursor:pointer;
+}
+.eff-row.selected{border-color:var(--eff); box-shadow:0 0 0 1px var(--eff) inset}
+.eff-row .top{display:flex; gap:6px; align-items:center; margin-bottom:6px}
+.eff-row select{flex:1; min-width:0}
+.eff-del{
+  flex:0 0 auto; width:22px; height:22px; border:1px solid var(--line); border-radius:6px;
+  background:transparent; color:var(--muted); cursor:pointer; font-size:12px; line-height:1;
+}
+.eff-del:hover{color:var(--danger); border-color:var(--danger)}
+.eff-hint{font-size:11px; color:var(--muted); margin:4px 0}
+button.wide{
+  width:100%; padding:7px 0; border:1px dashed var(--line); border-radius:8px;
+  background:transparent; color:var(--accent); cursor:pointer; font:inherit; font-size:13px;
+}
+button.wide:hover{border-color:var(--accent)}
+button.small{
+  padding:4px 10px; border:1px solid var(--line); border-radius:6px;
+  background:transparent; color:var(--ink); cursor:pointer; font:inherit; font-size:12px;
+}
+button.small:hover{border-color:var(--accent)}
+
+/* aspect toggle chips: off = outline, on = filled --eff, active = extra ring */
+.chips{display:flex; gap:6px; margin:2px 0 2px}
+.chip-t{
+  flex:1; padding:3px 0; border:1px solid var(--line); border-radius:999px;
+  background:transparent; color:var(--muted); cursor:pointer; font:inherit; font-size:12px;
+  text-align:center;
+}
+.chip-t:hover{border-color:var(--eff)}
+.chip-t.on{background:var(--eff); border-color:var(--eff); color:var(--bg); font-weight:600}
+.chip-t.on.active{box-shadow:0 0 0 1.5px var(--panel), 0 0 0 3px var(--eff)}
+
+/* per-aspect sub-panel under an enabled chip */
+.aspect{border-top:1px dashed var(--line); margin-top:6px; padding-top:5px}
+.aspect .ttl{font-size:10px; color:var(--muted); letter-spacing:.06em; margin-bottom:2px}
+
+/* sliders */
+.sl{display:grid; grid-template-columns:64px 1fr 44px; gap:6px; align-items:center; margin:3px 0}
+.sl label{font-size:11px; color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+.sl .val{font-size:11px; text-align:right}
+input[type=range]{width:100%; accent-color:var(--accent); height:18px; cursor:pointer}
+.eff-row input[type=range]{accent-color:var(--eff)}
+select,input[type=text]{
+  background:var(--bg); color:var(--ink); border:1px solid var(--line); border-radius:6px;
+  padding:4px 6px; font:inherit; font-size:12px;
+}
+#rail select{max-width:100%}
+
+/* auxiliary numeric inputs (gizmo is primary; these are secondary) */
+.xyz{display:grid; grid-template-columns:repeat(3,1fr); gap:6px; margin:6px 0 2px}
+.xyz-cell{display:flex; align-items:center; gap:4px; min-width:0}
+.xyz-cell span{font-size:10px; color:var(--muted)}
+.xyz-cell input{width:100%; min-width:0}
+input[type=number]{
+  background:var(--bg); color:var(--ink); border:1px solid var(--line); border-radius:6px;
+  padding:3px 4px; font-family:var(--mono); font-size:11px;
+}
+
+/* toggles */
+.tg{display:flex; align-items:center; gap:8px; margin:5px 0; font-size:13px; cursor:pointer}
+.tg input{accent-color:var(--accent); width:15px; height:15px; cursor:pointer}
+
+/* footer / status */
+#footer{padding:10px 14px; border-bottom:none; font-size:12px; color:var(--muted)}
+#footer .kv{display:flex; justify-content:space-between; margin:2px 0}
+#banner{
+  display:none; margin-top:8px; padding:8px 10px; border-radius:8px;
+  border:1px solid var(--danger); color:var(--danger);
+  background:color-mix(in srgb, var(--danger) 12%, transparent);
+  font-size:12px; word-break:break-all;
+}
+#banner.show{display:block}
+#banner button{margin-top:6px; border-color:var(--danger); color:var(--danger)}
+</style>
+</head>
+<body>
+<header>
+  <h1>SMPL-IK 实时演示</h1>
+  <div class="spacer"></div>
+  <div class="chip" id="latChip">延迟 <span class="num" id="latVal">--</span> ms</div>
+  <div class="chip"><span class="dot" id="statusDot"></span><span id="statusText">连接中</span></div>
+</header>
+<main>
+  <div id="viewport">
+    <canvas id="glcanvas"></canvas>
+    <div id="hint">左键拖空白=旋转视角 · 滚轮=缩放 · 右键拖=平移 · 点击开关芯片启停约束 · 芯片再点=切换操纵目标 · Delete=删除选中关节行</div>
+    <div id="overlay">
+      <div class="card">
+        <div class="big">正在连接推理服务器…</div>
+        <div class="sub" id="overlaySub">等待 /meta 响应</div>
+      </div>
+    </div>
+  </div>
+  <div id="rail">
+    <section>
+      <h2>样本</h2>
+      <div id="samples"></div>
+    </section>
+    <section>
+      <h2>关节约束</h2>
+      <div id="effList"></div>
+      <button class="wide" id="addEff" type="button">＋ 添加关节</button>
+    </section>
+    <section>
+      <h2>体型</h2>
+      <div id="betaList"></div>
+      <div class="row" style="margin-top:8px">
+        <label style="font-size:12px;color:var(--muted)">性别</label>
+        <select id="genderSel" class="grow"></select>
+        <button class="small" id="resetBetas" type="button">重置体型</button>
+      </div>
+    </section>
+    <section>
+      <h2>显示</h2>
+      <label class="tg"><input type="checkbox" id="tgMesh" checked>蒙皮网格</label>
+      <label class="tg"><input type="checkbox" id="tgSkel" checked>骨架</label>
+      <label class="tg"><input type="checkbox" id="tgGT">GT 参考骨架</label>
+      <label class="tg"><input type="checkbox" id="tgGiz" checked>效应器标记</label>
+      <label class="tg"><input type="checkbox" id="tgGrid" checked>地面网格</label>
+    </section>
+    <section id="footer">
+      <h2>状态</h2>
+      <div class="kv"><span>上次求解</span><span class="num" id="fSolveMs">--</span></div>
+      <div class="kv"><span>约束数量</span><span class="num" id="fEffCount">0</span></div>
+      <div id="banner" role="alert">
+        <div id="bannerMsg"></div>
+        <button class="small" id="retryBtn" type="button">重试</button>
+      </div>
+    </section>
+  </div>
+</main>
+<script type="importmap">{"imports":{"three":"/vendor/three.module.js","three/addons/controls/OrbitControls.js":"/vendor/OrbitControls.js","three/addons/controls/TransformControls.js":"/vendor/TransformControls.js"}}</script>
+<script type="module">
+/* =========================================================================
+   SMPL-IK live demo frontend, v3 (three.js r160 renderer).
+   Same-origin API: GET /meta, POST /solve (see server.py).
+
+   v3 constraint model: one ROW per JOINT, each row carries up to 3
+   INDEPENDENT constraint aspects (position / rotation / lookat) that can be
+   active SIMULTANEOUSLY. E.g. pin the pelvis position into a squat AND add a
+   rotation constraint on the same pelvis: turning the rotation gizmo keeps
+   the squat because the position pin stays in the payload. The wire format
+   of POST /solve is UNCHANGED: each enabled aspect flattens to one effector
+   object exactly as before (position->{type:'position',joint,pos,weight,
+   tolerance}; rotation->{type:'rotation',joint,rot6d,...};
+   lookat->{type:'lookat',joint,pos:target,dir,...}).
+
+   Aspect semantics: ENABLING an aspect seeds it from the CURRENT solved
+   state (already satisfied -> NO solve fired, zero jump, lazy). DISABLING an
+   aspect removes its constraint and fires a (blended) re-solve. The server
+   400s if no position aspect with weight > 0 remains; that error is shown in
+   the banner verbatim (fail loud, no client-side prevention).
+
+   Gender encoding (repo smpl_posing.py): int scalar, 0=male, 1=female,
+   other=neutral; labels/values come from /meta gender_values.
+   rot6d (pytorch3d matrix_to_rotation_6d): first two ROWS of the joint's
+   WORLD rotation matrix flattened [r00,r01,r02,r10,r11,r12],
+   identity = [1,0,0,0,1,0].
+   Frame: Z-up, meters. NOTE on ground height: the demo samples are
+   pelvis-centered (GT foot joints sit at z ~ -1.0), so a grid at literal
+   z=0 would cut through the torso. The ground is therefore world-fixed at
+   groundZ = min(0, min_z(GT joints) - 0.03), computed ONCE per sample load
+   and never updated by solves or dragging (it does NOT follow the pose).
+   For truly ground-at-zero data this degenerates to exactly z=0.
+   ========================================================================= */
+import * as THREE from "three";
+import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+import { TransformControls } from "three/addons/controls/TransformControls.js";
+
+/* ---------------- rot6d <-> quaternion ---------------- */
+/* pytorch3d rotation_6d_to_matrix: b1=norm(a1); b2=norm(a2-(b1.a2)b1);
+   b3=b1xb2; b1/b2/b3 are the ROWS of R. */
+function rot6dToQuat(r6){
+  const a1=new THREE.Vector3(r6[0],r6[1],r6[2]);
+  const a2=new THREE.Vector3(r6[3],r6[4],r6[5]);
+  const b1=a1.clone().normalize();
+  const b2=a2.clone().addScaledVector(b1,-b1.dot(a2)).normalize();
+  const b3=new THREE.Vector3().crossVectors(b1,b2);
+  const m=new THREE.Matrix4().set(  // set() takes row-major args
+    b1.x,b1.y,b1.z,0,
+    b2.x,b2.y,b2.z,0,
+    b3.x,b3.y,b3.z,0,
+    0,0,0,1);
+  return new THREE.Quaternion().setFromRotationMatrix(m);
+}
+function quatToRot6d(q){
+  const e=new THREE.Matrix4().makeRotationFromQuaternion(q).elements; // column-major
+  return [e[0],e[4],e[8], e[1],e[5],e[9]]; // rows 0 and 1
+}
+const D2R=Math.PI/180, R2D=180/Math.PI;
+function quatToEulerDeg(q){
+  const eu=new THREE.Euler().setFromQuaternion(q,"XYZ");
+  return [eu.x*R2D, eu.y*R2D, eu.z*R2D];
+}
+function eulerDegToQuat(x,y,z){
+  return new THREE.Quaternion().setFromEuler(new THREE.Euler(x*D2R,y*D2R,z*D2R,"XYZ"));
+}
+
+/* ---------------- global state ---------------- */
+const TYPE_LABELS={position:"位置", rotation:"旋转", lookat:"朝向"};
+const ASPECT_KEYS=["position","rotation","lookat"]; // fixed order everywhere
+const DIR_PRESETS=[["Z+",[0,0,1]],["Y+",[0,1,0]],["X+",[1,0,0]]];
+const IDENT6=[1,0,0,0,1,0];
+const state={
+  meta:null,
+  betas:new Array(10).fill(0),
+  gender:0,
+  /* rows: one entry per constrained JOINT (at most one row per joint).
+     Each aspect: {on, ...aspect-specific target..., weight, tol}. */
+  rows:[],               // {joint, aspects:{position:{on,pos},rotation:{on,rot6d,quat},lookat:{on,target,dir}}}
+  selected:-1,           // row index
+  activeAspect:null,     // "position"|"rotation"|"lookat": which aspect of the selected row drives the gizmo
+  activeSample:-1,
+  gtJoints:null,         // [24][3] of loaded sample
+  gtRot6d:null,          // [24][6] of loaded sample (world ortho6d, net encoding)
+  joints:null,           // last predicted [24][3]
+  solveMs:null,
+  show:{mesh:true, skel:true, gt:false, giz:true, grid:true},
+  groundZ:0,             // world-fixed; set once per sample load (see header note)
+};
+const els={
+  canvas:document.getElementById("glcanvas"),
+  viewport:document.getElementById("viewport"),
+  overlay:document.getElementById("overlay"),
+  overlaySub:document.getElementById("overlaySub"),
+  latChip:document.getElementById("latChip"),
+  latVal:document.getElementById("latVal"),
+  statusDot:document.getElementById("statusDot"),
+  statusText:document.getElementById("statusText"),
+  samples:document.getElementById("samples"),
+  effList:document.getElementById("effList"),
+  addEff:document.getElementById("addEff"),
+  betaList:document.getElementById("betaList"),
+  genderSel:document.getElementById("genderSel"),
+  resetBetas:document.getElementById("resetBetas"),
+  fSolveMs:document.getElementById("fSolveMs"),
+  fEffCount:document.getElementById("fEffCount"),
+  banner:document.getElementById("banner"),
+  bannerMsg:document.getElementById("bannerMsg"),
+  retryBtn:document.getElementById("retryBtn"),
+};
+
+/* ---------------- status / errors (fail loud) ---------------- */
+function setStatus(mode,text){ // mode: ok|warn|err
+  els.statusDot.className="dot "+mode;
+  els.statusText.textContent=text;
+}
+function showError(msg){
+  els.bannerMsg.textContent=msg;
+  els.banner.classList.add("show");
+}
+function clearError(){ els.banner.classList.remove("show"); }
+
+/* ---------------- three.js scene ---------------- */
+let glOK=true, needRender=true;
+let renderer=null, scene=null, camera=null, orbit=null, tctrl=null;
+let hemiLight=null, dirLight=null;
+let grid=null, shadowGround=null;
+let meshObj=null, meshGeo=null, meshMat=null;
+let skelObj=null, skelGeo=null, skelMat=null;
+let gtObj=null, gtGeo=null, gtMat=null;
+let markersGroup=null, guideObj=null, guideGeo=null, guideMat=null;
+const markers=[];               // THREE.Mesh per ENABLED (row, aspect) pair; userData={row,aspect}
+let sphereGeo=null, lookSphereGeo=null, boxGeo=null;
+const MAX_EFF=64;
+/* per-row UI refs, filled by renderRows(); declared here because
+   applySelection() (called via refreshThemeColors during initScene) reads it */
+const rowRefs=[]; // per row: {pos:[3]|null, eul:[3]|null, la:[3]|null, chips:{key:el}|null}
+
+const theme={bg:"#0F1319", mesh:"#6B7688", accent:"#F0A044",
+             eff:"#4FD1B5", muted:"#8B95A6", line:"#2A3340"};
+
+try{
+  renderer=new THREE.WebGLRenderer({canvas:els.canvas, antialias:true});
+}catch(e){
+  glOK=false;
+  setStatus("err","WebGL 不可用");
+  showError("此浏览器不支持 WebGL，无法渲染 3D 视图: "+e.message);
+}
+
+function initScene(){
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,2));
+  renderer.shadowMap.enabled=true;
+  renderer.shadowMap.type=THREE.PCFSoftShadowMap;
+
+  scene=new THREE.Scene();
+
+  camera=new THREE.PerspectiveCamera(45,1,0.05,100);
+  camera.up.set(0,0,1);                       // Z-up world
+  const az=0.9, el=0.28, r=3.4, t0=[0,-0.2,0.1];
+  camera.position.set(
+    t0[0]+r*Math.cos(el)*Math.cos(az),
+    t0[1]+r*Math.cos(el)*Math.sin(az),
+    t0[2]+r*Math.sin(el));
+
+  orbit=new OrbitControls(camera,els.canvas);
+  orbit.target.set(t0[0],t0[1],t0[2]);
+  orbit.enableDamping=false;
+  orbit.minDistance=0.4; orbit.maxDistance=15;
+  orbit.addEventListener("change",()=>{ needRender=true; });
+  orbit.update();
+
+  // lights + soft contact shadow
+  hemiLight=new THREE.HemisphereLight(0xffffff,0x39424e,1.1);
+  hemiLight.position.set(0,0,1);              // sky along +Z
+  scene.add(hemiLight);
+  dirLight=new THREE.DirectionalLight(0xffffff,2.2);
+  dirLight.position.set(1.8,1.2,4.2);
+  dirLight.castShadow=true;
+  dirLight.shadow.mapSize.set(1024,1024);
+  dirLight.shadow.camera.left=-2.4; dirLight.shadow.camera.right=2.4;
+  dirLight.shadow.camera.top=2.4; dirLight.shadow.camera.bottom=-2.4;
+  dirLight.shadow.camera.near=0.1; dirLight.shadow.camera.far=12;
+  dirLight.shadow.bias=-0.0005;
+  scene.add(dirLight); scene.add(dirLight.target);
+
+  // shadow catcher: PlaneGeometry natively lies in XY facing +Z (Z-up ready)
+  shadowGround=new THREE.Mesh(
+    new THREE.PlaneGeometry(20,20),
+    new THREE.ShadowMaterial({opacity:0.28}));
+  shadowGround.receiveShadow=true;
+  scene.add(shadowGround);
+
+  rebuildGrid();
+
+  // constraint markers, look-at guide lines
+  sphereGeo=new THREE.SphereGeometry(0.033,16,12);
+  lookSphereGeo=new THREE.SphereGeometry(0.026,16,12); // lookat target: smaller sphere
+  boxGeo=new THREE.BoxGeometry(0.05,0.05,0.05);
+  markersGroup=new THREE.Group();
+  scene.add(markersGroup);
+
+  guideGeo=new THREE.BufferGeometry();
+  guideGeo.setAttribute("position",
+    new THREE.BufferAttribute(new Float32Array(MAX_EFF*2*3),3));
+  guideGeo.setDrawRange(0,0);
+  guideMat=new THREE.LineBasicMaterial({transparent:true,opacity:0.55,depthTest:false});
+  guideObj=new THREE.LineSegments(guideGeo,guideMat);
+  guideObj.renderOrder=8; guideObj.frustumCulled=false;
+  scene.add(guideObj);
+
+  // gizmo (create BEFORE registering the picker so its pointer handlers run first)
+  tctrl=new TransformControls(camera,els.canvas);
+  tctrl.size=0.7;
+  tctrl.addEventListener("change",()=>{ needRender=true; });
+  tctrl.addEventListener("dragging-changed",(e)=>{
+    orbit.enabled=!e.value;
+    if(!e.value) scheduleSolve(true);         // immediate solve on gizmo release
+  });
+  tctrl.addEventListener("objectChange",()=>{
+    const m=tctrl.object;
+    if(!m||m.userData.row===undefined) return;
+    const row=state.rows[m.userData.row];
+    if(!row) return;
+    const a=row.aspects[m.userData.aspect];
+    if(!a||!a.on) return;
+    if(m.userData.aspect==="rotation"){
+      a.quat.copy(m.quaternion);
+      a.rot6d=quatToRot6d(a.quat);
+    }else if(m.userData.aspect==="lookat"){
+      a.target=[m.position.x,m.position.y,m.position.z];
+    }else{
+      a.pos=[m.position.x,m.position.y,m.position.z];
+    }
+    refreshAux(m.userData.row);
+    updateGuides();
+    needRender=true;
+    scheduleSolve(false);
+  });
+  scene.add(tctrl);
+
+  refreshThemeColors();
+}
+
+function rebuildGrid(){
+  if(grid){
+    scene.remove(grid);
+    grid.geometry.dispose(); grid.material.dispose();
+  }
+  const c=new THREE.Color(theme.line);
+  grid=new THREE.GridHelper(10,40,c,c);      // 10 m, 0.25 m cells
+  grid.rotation.x=Math.PI/2;                 // default XZ plane -> XY plane (Z-up)
+  grid.position.z=state.groundZ;             // world-fixed; set per sample load only
+  grid.material.transparent=true;
+  grid.material.opacity=0.5;
+  grid.material.depthWrite=false;
+  grid.visible=state.show.grid;
+  scene.add(grid);
+}
+
+function hexToken(cs,name,fallback){
+  const v=(cs.getPropertyValue(name)||"").trim();
+  return /^#[0-9a-fA-F]{3}([0-9a-fA-F]{3})?$/.test(v)?v:fallback;
+}
+function refreshThemeColors(){
+  const cs=getComputedStyle(document.documentElement);
+  theme.bg=hexToken(cs,"--bg",theme.bg);
+  theme.mesh=hexToken(cs,"--mesh",theme.mesh);
+  theme.accent=hexToken(cs,"--accent",theme.accent);
+  theme.eff=hexToken(cs,"--eff",theme.eff);
+  theme.muted=hexToken(cs,"--muted",theme.muted);
+  theme.line=hexToken(cs,"--line",theme.line);
+  if(!glOK||!scene) return;
+  scene.background=new THREE.Color(theme.bg);
+  if(meshMat) meshMat.color.set(theme.mesh);
+  if(skelMat) skelMat.color.set(theme.accent);
+  if(gtMat) gtMat.color.set(theme.muted);
+  if(guideMat) guideMat.color.set(theme.eff);
+  rebuildGrid();
+  applySelection();   // re-tints markers (incl. arrow helpers)
+  needRender=true;
+}
+if(window.matchMedia){
+  const mq=window.matchMedia("(prefers-color-scheme: light)");
+  if(mq.addEventListener) mq.addEventListener("change",refreshThemeColors);
+}
+new MutationObserver(refreshThemeColors)
+  .observe(document.documentElement,{attributes:true,attributeFilter:["data-theme"]});
+
+if(glOK) initScene();
+
+/* ---------------- geometry from /meta + per-solve updates ---------------- */
+function setupMeshBuffers(meta){
+  if(!glOK) return;
+  if(meshObj){ scene.remove(meshObj); meshGeo.dispose(); meshMat.dispose(); }
+  if(skelObj){ scene.remove(skelObj); skelGeo.dispose(); skelMat.dispose(); }
+  if(gtObj){ scene.remove(gtObj); gtGeo.dispose(); gtMat.dispose(); }
+
+  const F=meta.faces.length;
+  const idx=new Uint32Array(F*3);
+  for(let i=0;i<F;i++){
+    idx[i*3]=meta.faces[i][0];
+    idx[i*3+1]=meta.faces[i][1];
+    idx[i*3+2]=meta.faces[i][2];
+  }
+  meshGeo=new THREE.BufferGeometry();
+  meshGeo.setIndex(new THREE.BufferAttribute(idx,1));
+  meshGeo.setAttribute("position",
+    new THREE.BufferAttribute(new Float32Array(meta.n_verts*3),3));
+  meshMat=new THREE.MeshStandardMaterial({
+    color:new THREE.Color(theme.mesh),
+    roughness:0.85, metalness:0.05, side:THREE.DoubleSide});
+  meshObj=new THREE.Mesh(meshGeo,meshMat);
+  meshObj.castShadow=true;
+  meshObj.frustumCulled=false;
+  meshObj.visible=state.show.mesh;
+  scene.add(meshObj);
+
+  // skeleton bone index pairs from parents
+  const pairs=[];
+  for(let j=0;j<meta.parents.length;j++){
+    if(meta.parents[j]>=0) pairs.push(j,meta.parents[j]);
+  }
+  const mkSkel=(colorHex,opacity,order)=>{
+    const g=new THREE.BufferGeometry();
+    g.setIndex(pairs.slice());
+    g.setAttribute("position",
+      new THREE.BufferAttribute(new Float32Array(meta.parents.length*3),3));
+    const m=new THREE.LineBasicMaterial({
+      color:new THREE.Color(colorHex),transparent:true,opacity,depthTest:false});
+    const o=new THREE.LineSegments(g,m);
+    o.renderOrder=order; o.frustumCulled=false;
+    scene.add(o);
+    return [o,g,m];
+  };
+  [gtObj,gtGeo,gtMat]=mkSkel(theme.muted,0.5,9);
+  gtObj.visible=state.show.gt;
+  [skelObj,skelGeo,skelMat]=mkSkel(theme.accent,0.95,10);
+  skelObj.visible=state.show.skel;
+}
+
+const REDUCED_MOTION=matchMedia("(prefers-reduced-motion: reduce)").matches;
+let poseAnim=null;   // {t0, fromV(Float32Array), toV, fromJ, toJ}
+function applyVerts(verts,joints){
+  // While the gizmo is being dragged apply instantly (stay responsive);
+  // otherwise ease 180ms so no solve ever lands as a visual jump.
+  const instant=(typeof tctrl!=="undefined"&&tctrl&&tctrl.dragging)
+    ||REDUCED_MOTION||!glOK||!meshGeo||!state.joints;
+  if(instant){ poseAnim=null; setPoseNow(verts,joints); return; }
+  poseAnim={t0:performance.now(),
+    fromV:Float32Array.from(meshGeo.attributes.position.array),
+    toV:verts, fromJ:state.joints.map(p=>p.slice()), toJ:joints};
+  needRender=true;
+}
+function setPoseNow(verts,joints){
+  state.joints=joints;
+  if(!glOK||!meshGeo) return;
+  const pa=meshGeo.attributes.position.array;
+  const n=Math.min(verts.length,pa.length/3);
+  for(let i=0;i<n;i++){
+    const v=verts[i];
+    pa[i*3]=v[0]; pa[i*3+1]=v[1]; pa[i*3+2]=v[2];
+  }
+  meshGeo.attributes.position.needsUpdate=true;
+  meshGeo.computeVertexNormals();
+  const sp=skelGeo.attributes.position.array;
+  for(let j=0;j<joints.length;j++){
+    sp[j*3]=joints[j][0]; sp[j*3+1]=joints[j][1]; sp[j*3+2]=joints[j][2];
+  }
+  skelGeo.attributes.position.needsUpdate=true;
+  syncMarkers();          // rotation markers ride the predicted joint positions
+  updateGuides();
+  needRender=true;
+}
+
+function uploadGT(){
+  if(!glOK||!gtGeo||!state.gtJoints) return;
+  const a=gtGeo.attributes.position.array, j=state.gtJoints;
+  for(let i=0;i<j.length;i++){
+    a[i*3]=j[i][0]; a[i*3+1]=j[i][1]; a[i*3+2]=j[i][2];
+  }
+  gtGeo.attributes.position.needsUpdate=true;
+  needRender=true;
+}
+
+/* ---------------- row/aspect helpers ---------------- */
+function mkAspects(d){
+  const w=(typeof d.weight==="number")?d.weight:1.0;
+  const t=(typeof d.tolerance==="number")?d.tolerance:0.0;
+  return {
+    position:{on:false, pos:[0,0,0], weight:w, tol:t},
+    rotation:{on:false, rot6d:IDENT6.slice(), quat:new THREE.Quaternion(), weight:w, tol:t},
+    lookat:{on:false, target:[0,0,0.6], dir:[0,0,1], weight:w, tol:t},
+  };
+}
+function aspectOn(i,key){
+  const row=state.rows[i];
+  return !!(key&&row&&row.aspects[key]&&row.aspects[key].on);
+}
+function autoPickAspect(i){
+  // gizmo default when a row gets selected: position if on, else rotation, else lookat
+  const row=state.rows[i];
+  if(!row) return null;
+  for(const key of ASPECT_KEYS){ if(row.aspects[key].on) return key; }
+  return null;
+}
+function countConstraints(){
+  let n=0;
+  for(const row of state.rows){
+    for(const key of ASPECT_KEYS){ if(row.aspects[key].on) n++; }
+  }
+  return n;
+}
+
+function seedPositionAspect(joint,a){
+  // seed at the CURRENT solved joint so the new pin is already satisfied
+  a.pos=(state.joints&&state.joints[joint])?state.joints[joint].slice()
+    :(state.gtJoints&&state.gtJoints[joint])?state.gtJoints[joint].slice():[0,0,0];
+}
+function seedRotationAspect(joint,a){
+  // seed from the CURRENT solved pose so enabling/moving barely moves the
+  // body; fall back to the sample's GT world rotation, then identity
+  const r6=(state.solvedRot6d&&state.solvedRot6d[joint])
+    ? state.solvedRot6d[joint].slice()
+    : (state.gtRot6d&&state.gtRot6d[joint])
+      ? state.gtRot6d[joint].slice() : IDENT6.slice();
+  a.rot6d=r6;
+  a.quat=rot6dToQuat(r6);
+}
+function seedLookatAspect(joint,a){
+  // place the look-at target 0.6 m along the joint's CURRENT world-space
+  // direction, so the new constraint starts out already satisfied
+  const j=(state.joints&&state.joints[joint])?state.joints[joint]:[0,0,1];
+  if(!a.dir) a.dir=[0,0,1];
+  const d=new THREE.Vector3(a.dir[0],a.dir[1],a.dir[2]);
+  const r6=(state.solvedRot6d&&state.solvedRot6d[joint])
+    || (state.gtRot6d&&state.gtRot6d[joint]);
+  if(r6) d.applyQuaternion(rot6dToQuat(r6));
+  a.target=[j[0]+d.x*0.6, j[1]+d.y*0.6, j[2]+d.z*0.6];
+}
+
+/* ---------------- constraint markers + gizmo ---------------- */
+function markerColorFor(){ return new THREE.Color(theme.eff); }
+function rebuildMarkers(){
+  if(!glOK) return;
+  for(const m of markers){
+    markersGroup.remove(m);
+    m.material.dispose();
+    for(const ch of m.children.slice()){
+      if(typeof ch.dispose==="function") ch.dispose(); // ArrowHelper
+      m.remove(ch);
+    }
+  }
+  markers.length=0;
+  // one marker per ENABLED aspect of every row: a joint with position +
+  // rotation shows the pin sphere AND the orientation box at once
+  state.rows.forEach((row,i)=>{
+    for(const key of ASPECT_KEYS){
+      const a=row.aspects[key];
+      if(!a.on) continue;
+      const mat=new THREE.MeshBasicMaterial({
+        color:markerColorFor(),transparent:true,opacity:0.75,depthTest:false});
+      const geo=key==="rotation"?boxGeo:(key==="lookat"?lookSphereGeo:sphereGeo);
+      const m=new THREE.Mesh(geo,mat);
+      m.renderOrder=11;
+      m.userData.row=i;
+      m.userData.aspect=key;
+      if(key==="lookat"){
+        const d=new THREE.Vector3(a.dir[0],a.dir[1],a.dir[2]).normalize();
+        const arrow=new THREE.ArrowHelper(d,new THREE.Vector3(0,0,0),0.16,
+                                          markerColorFor().getHex(),0.055,0.03);
+        arrow.line.material.depthTest=false;
+        arrow.cone.material.depthTest=false;
+        arrow.line.renderOrder=11; arrow.cone.renderOrder=11;
+        m.add(arrow);
+        m.userData.arrow=arrow;
+      }
+      markersGroup.add(m);
+      markers.push(m);
+    }
+  });
+  syncMarkers();
+  applySelection();
+}
+
+function syncMarkers(){
+  if(!glOK) return;
+  markers.forEach((m)=>{
+    const row=state.rows[m.userData.row];
+    if(!row) return;
+    const a=row.aspects[m.userData.aspect];
+    if(!a) return;
+    if(tctrl && tctrl.dragging && tctrl.object===m) return; // don't move under the user
+    if(m.userData.aspect==="rotation"){
+      const p=(state.joints&&state.joints[row.joint])||
+              (state.gtJoints&&state.gtJoints[row.joint])||[0,0,0];
+      m.position.set(p[0],p[1],p[2]);
+      m.quaternion.copy(a.quat);
+    }else if(m.userData.aspect==="lookat"){
+      m.position.set(a.target[0],a.target[1],a.target[2]);
+      m.quaternion.identity();
+      if(m.userData.arrow){
+        m.userData.arrow.setDirection(
+          new THREE.Vector3(a.dir[0],a.dir[1],a.dir[2]).normalize());
+      }
+    }else{
+      m.position.set(a.pos[0],a.pos[1],a.pos[2]);
+      m.quaternion.identity();
+    }
+  });
+  needRender=true;
+}
+
+function updateGuides(){
+  if(!glOK||!guideGeo) return;
+  const a=guideGeo.attributes.position.array;
+  let k=0;
+  for(const row of state.rows){
+    const la=row.aspects.lookat;
+    if(!la.on) continue;
+    const j=state.joints?state.joints[row.joint]:null;
+    if(!j) continue;
+    if(k+6>a.length) break;
+    a[k++]=j[0]; a[k++]=j[1]; a[k++]=j[2];
+    a[k++]=la.target[0]; a[k++]=la.target[1]; a[k++]=la.target[2];
+  }
+  guideGeo.setDrawRange(0,k/3);
+  guideGeo.attributes.position.needsUpdate=true;
+  needRender=true;
+}
+
+function markerFor(rowIdx,aspect){
+  for(const m of markers){
+    if(m.userData.row===rowIdx&&m.userData.aspect===aspect) return m;
+  }
+  return null;
+}
+
+function attachGizmo(){
+  if(!glOK||!tctrl) return;
+  const i=state.selected;
+  const m=(i>=0&&state.activeAspect)?markerFor(i,state.activeAspect):null;
+  if(m && state.show.giz){
+    tctrl.setMode(state.activeAspect==="rotation"?"rotate":"translate");
+    tctrl.attach(m);
+  }else{
+    tctrl.detach();
+  }
+  needRender=true;
+}
+
+function applySelection(){
+  const rowsEls=els.effList.children;
+  for(let k=0;k<rowsEls.length;k++) rowsEls[k].classList.toggle("selected",k===state.selected);
+  markers.forEach((m)=>{
+    const sel=m.userData.row===state.selected&&m.userData.aspect===state.activeAspect;
+    m.scale.setScalar(sel?1.35:1);
+    m.material.opacity=sel?1.0:0.75;
+    m.material.color.copy(markerColorFor());
+    if(m.userData.arrow) m.userData.arrow.setColor(markerColorFor().getHex());
+  });
+  rowRefs.forEach((ref,i)=>{
+    if(!ref.chips) return;
+    for(const key of ASPECT_KEYS){
+      const on=aspectOn(i,key);
+      ref.chips[key].classList.toggle("on",on);
+      ref.chips[key].classList.toggle("active",
+        on&&i===state.selected&&key===state.activeAspect);
+    }
+  });
+  needRender=true;
+}
+
+function selectRow(i,aspect){
+  const changed=(i!==state.selected);
+  state.selected=i;
+  if(i<0){
+    state.activeAspect=null;
+  }else if(aspect){
+    state.activeAspect=aspect;         // explicit pick (chip click / marker click)
+  }else if(changed||!aspectOn(i,state.activeAspect)){
+    state.activeAspect=autoPickAspect(i);
+  } // else: re-clicking the already-selected row keeps the current target
+  applySelection();
+  attachGizmo();
+}
+
+/* ---------------- aspect enable / disable (chip clicks) ---------------- */
+function enableAspect(i,key){
+  const row=state.rows[i];
+  if(!row) return;
+  const a=row.aspects[key];
+  if(key==="position") seedPositionAspect(row.joint,a);
+  else if(key==="rotation") seedRotationAspect(row.joint,a);
+  else seedLookatAspect(row.joint,a);
+  a.on=true;
+  state.selected=i;
+  state.activeAspect=key;
+  renderRows();
+  updateGuides();
+  // lazy: the aspect is seeded from the current solved state, so the
+  // constraint is already satisfied -> NO solve fired, zero visual jump
+}
+function disableAspect(i,key){
+  const row=state.rows[i];
+  if(!row) return;
+  row.aspects[key].on=false;
+  if(state.selected===i&&state.activeAspect===key) state.activeAspect=autoPickAspect(i);
+  renderRows();
+  updateGuides();
+  scheduleSolve(false);   // explicit constraint removal -> re-solve (180ms blend)
+  // note: if this was the last position aspect the server 400s ("at least one
+  // position effector with weight > 0 is required...") and the banner shows it
+}
+function onChipClick(i,key){
+  const row=state.rows[i];
+  if(!row) return;
+  if(!row.aspects[key].on){ enableAspect(i,key); return; }
+  if(state.selected===i&&state.activeAspect===key){ disableAspect(i,key); return; }
+  selectRow(i,key);       // already on, not the manipulation target -> make it so
+}
+
+/* ---------------- picking (click marker -> select row + aspect) ---------- */
+const raycaster=new THREE.Raycaster();
+raycaster.params.Line.threshold=0.02; // default 1 m would make arrow lines grab far clicks
+const pointerNdc=new THREE.Vector2();
+if(glOK){
+  // registered AFTER OrbitControls/TransformControls: gizmo handles win
+  els.canvas.addEventListener("pointerdown",(ev)=>{
+    if(ev.button!==0) return;
+    if(!state.show.giz||!markers.length) return;
+    if(tctrl.dragging||tctrl.axis) return;   // pointer is on a gizmo handle
+    const r=els.canvas.getBoundingClientRect();
+    pointerNdc.set(((ev.clientX-r.left)/r.width)*2-1,
+                   -((ev.clientY-r.top)/r.height)*2+1);
+    raycaster.setFromCamera(pointerNdc,camera);
+    const hits=raycaster.intersectObjects(markersGroup.children,true);
+    if(!hits.length) return;
+    let o=hits[0].object;
+    while(o && o!==markersGroup && o.userData.row===undefined) o=o.parent;
+    if(!o||o.userData.row===undefined) return;
+    selectRow(o.userData.row,o.userData.aspect); // that marker's aspect becomes active
+    // suppress the orbit that already started on this same pointerdown
+    orbit.enabled=false;
+    const restore=()=>{
+      window.removeEventListener("pointerup",restore);
+      if(!tctrl.dragging) orbit.enabled=true;
+    };
+    window.addEventListener("pointerup",restore);
+  });
+}
+
+/* ---------------- render loop / resize ---------------- */
+function frame(){
+  if(poseAnim){
+    const u=Math.min(1,(performance.now()-poseAnim.t0)/180);
+    const e=1-Math.pow(1-u,3);
+    if(u>=1){ const a=poseAnim; poseAnim=null; setPoseNow(a.toV,a.toJ); }
+    else{
+      const fv=poseAnim.fromV, tv=poseAnim.toV;
+      const lv=new Array(tv.length);
+      for(let i=0;i<tv.length;i++){
+        const b=i*3, t=tv[i];
+        lv[i]=[fv[b]+(t[0]-fv[b])*e, fv[b+1]+(t[1]-fv[b+1])*e, fv[b+2]+(t[2]-fv[b+2])*e];
+      }
+      const fj=poseAnim.fromJ, tj=poseAnim.toJ;
+      const lj=fj.map((p,j)=>[0,1,2].map(k=>p[k]+(tj[j][k]-p[k])*e));
+      const keep=poseAnim; setPoseNow(lv,lj); poseAnim=keep;
+      needRender=true;
+    }
+  }
+  if(needRender&&glOK){ needRender=false; renderer.render(scene,camera); }
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+
+function resizeCanvas(){
+  if(!glOK) return;
+  const r=els.viewport.getBoundingClientRect();
+  const w=Math.max(1,Math.round(r.width)), h=Math.max(1,Math.round(r.height));
+  renderer.setSize(w,h,false);
+  camera.aspect=w/h;
+  camera.updateProjectionMatrix();
+  needRender=true;
+}
+new ResizeObserver(resizeCanvas).observe(els.viewport);
+resizeCanvas();
+
+/* ---------------- networking (verbatim semantics from frontend.html) ------ */
+let solveSeq=0, lastAppliedSeq=0, inFlight=0, solveTimer=null, lastSolveAt=0;
+function setBusy(){
+  const busy=inFlight>0;
+  els.latChip.classList.toggle("busy",busy);
+}
+function buildSolvePayload(){
+  // flatten every ENABLED aspect of every row to one effector object,
+  // wire format UNCHANGED from the one-effector-one-type frontend
+  const effs=[];
+  for(const row of state.rows){
+    const A=row.aspects;
+    if(A.position.on){
+      effs.push({type:"position", joint:row.joint, pos:A.position.pos.slice(),
+                 weight:A.position.weight, tolerance:A.position.tol});
+    }
+    if(A.rotation.on){
+      effs.push({type:"rotation", joint:row.joint, rot6d:A.rotation.rot6d.slice(),
+                 weight:A.rotation.weight, tolerance:A.rotation.tol});
+    }
+    if(A.lookat.on){
+      effs.push({type:"lookat", joint:row.joint, pos:A.lookat.target.slice(),
+                 dir:A.lookat.dir.slice(),
+                 weight:A.lookat.weight, tolerance:A.lookat.tol});
+    }
+  }
+  return {betas:state.betas.slice(), gender:state.gender, effectors:effs};
+}
+async function doSolve(){
+  if(!state.meta) return;
+  lastSolveAt=performance.now();
+  const mySeq=++solveSeq;
+  inFlight++; setBusy();
+  const t0=performance.now();
+  try{
+    const resp=await fetch("/solve",{
+      method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body:JSON.stringify(buildSolvePayload()),
+    });
+    let data=null;
+    try{ data=await resp.json(); }catch(_e){ data=null; }
+    if(!resp.ok){
+      const msg=(data&&data.error)?data.error:("HTTP "+resp.status);
+      showError("求解失败: "+msg);
+      setStatus("ok","已连接");
+      return;
+    }
+    if(mySeq<=lastAppliedSeq) return; // stale reply, drop
+    lastAppliedSeq=mySeq;
+    clearError();
+    setStatus("ok","已连接");
+    state.solveMs=data.solve_ms;
+    const rt=performance.now()-t0;
+    els.latVal.textContent=rt.toFixed(0);
+    els.fSolveMs.textContent=(typeof data.solve_ms==="number")
+      ? data.solve_ms.toFixed(1)+" ms（往返 "+rt.toFixed(0)+" ms）" : "--";
+    if(data.rot6d) state.solvedRot6d=data.rot6d;
+    applyVerts(data.verts,data.joints);
+  }catch(err){
+    setStatus("err","连接断开");
+    showError("无法连接推理服务器: "+err.message);
+  }finally{
+    inFlight--; setBusy();
+  }
+}
+function scheduleSolve(immediate){
+  if(immediate){
+    if(solveTimer){ clearTimeout(solveTimer); solveTimer=null; }
+    doSolve(); return;
+  }
+  // throttle with trailing edge: keep the pending timer alive during
+  // continuous gizmo drag so solves fire every ~80ms WHILE dragging
+  if(solveTimer) return;
+  const wait=Math.max(0, 80-(performance.now()-lastSolveAt));
+  solveTimer=setTimeout(()=>{ solveTimer=null; doSolve(); }, wait);
+}
+
+let metaRetryTimer=null, metaAttempt=0;
+async function fetchMeta(){
+  if(metaRetryTimer){ clearTimeout(metaRetryTimer); metaRetryTimer=null; }
+  setStatus("warn","连接中");
+  els.overlaySub.textContent="等待 /meta 响应（第 "+(metaAttempt+1)+" 次尝试）";
+  try{
+    const resp=await fetch("/meta");
+    if(!resp.ok){
+      let msg="HTTP "+resp.status;
+      try{ const d=await resp.json(); if(d&&d.error) msg=d.error; }catch(_e){}
+      throw new Error(msg);
+    }
+    const meta=await resp.json();
+    onMeta(meta);
+  }catch(err){
+    metaAttempt++;
+    setStatus("err","服务器不可用");
+    showError("获取 /meta 失败: "+err.message);
+    els.overlaySub.textContent="连接失败: "+err.message+"（自动重试中）";
+    metaRetryTimer=setTimeout(fetchMeta,Math.min(5000,1000*metaAttempt));
+  }
+}
+els.retryBtn.addEventListener("click",()=>{
+  clearError();
+  if(!state.meta) fetchMeta();
+  else scheduleSolve(true);
+});
+
+/* ---------------- UI: builders ---------------- */
+function makeSlider(labelText,min,max,step,value,fmt,onInput){
+  const wrap=document.createElement("div"); wrap.className="sl";
+  const lab=document.createElement("label"); lab.textContent=labelText;
+  const inp=document.createElement("input");
+  inp.type="range"; inp.min=min; inp.max=max; inp.step=step; inp.value=value;
+  const val=document.createElement("span"); val.className="val num";
+  val.textContent=fmt(value);
+  inp.addEventListener("input",()=>{
+    const v=parseFloat(inp.value);
+    val.textContent=fmt(v);
+    onInput(v);
+  });
+  wrap.appendChild(lab); wrap.appendChild(inp); wrap.appendChild(val);
+  return {wrap,inp,val};
+}
+function genderLabel(v){
+  const gv=state.meta?state.meta.gender_values:null;
+  if(gv){
+    for(const k of Object.keys(gv)){ if(Number(gv[k])===Number(v)) return k; }
+  }
+  return String(v);
+}
+function fmt2(v){ return v.toFixed(2); }
+function fmt3(v){ return v.toFixed(3); }
+function fmt1(v){ return v.toFixed(1); }
+
+/* auxiliary numeric inputs (gizmo is the primary manipulation path);
+   rowRefs itself is declared up in the scene-globals block */
+function refreshAux(i){
+  const ref=rowRefs[i], row=state.rows[i];
+  if(!ref||!row) return;
+  if(ref.pos){
+    ref.pos.forEach((inp,k)=>{
+      if(document.activeElement!==inp) inp.value=row.aspects.position.pos[k].toFixed(3);
+    });
+  }
+  if(ref.eul){
+    const eu=quatToEulerDeg(row.aspects.rotation.quat);
+    ref.eul.forEach((inp,k)=>{
+      if(document.activeElement!==inp) inp.value=eu[k].toFixed(1);
+    });
+  }
+  if(ref.la){
+    ref.la.forEach((inp,k)=>{
+      if(document.activeElement!==inp) inp.value=row.aspects.lookat.target[k].toFixed(3);
+    });
+  }
+}
+function makeXYZ(labels,values,step,decimals,onChange){
+  const wrap=document.createElement("div"); wrap.className="xyz";
+  const inputs=[];
+  labels.forEach((ax,k)=>{
+    const cell=document.createElement("label"); cell.className="xyz-cell";
+    const t=document.createElement("span"); t.textContent=ax;
+    const inp=document.createElement("input");
+    inp.type="number"; inp.step=String(step);
+    inp.value=values[k].toFixed(decimals);
+    inp.addEventListener("change",()=>{
+      const v=parseFloat(inp.value);
+      if(!isFinite(v)){ refreshAux(inp._row); return; }
+      onChange(k,v);
+    });
+    cell.appendChild(t); cell.appendChild(inp);
+    wrap.appendChild(cell); inputs.push(inp);
+  });
+  return {wrap,inputs};
+}
+
+function renderSamples(){
+  els.samples.textContent="";
+  state.meta.samples.forEach((s,i)=>{
+    const b=document.createElement("button");
+    b.type="button";
+    b.className="sample-card"+(state.activeSample===i?" active":"");
+    const id=document.createElement("div"); id.className="id"; id.textContent="样本 "+s.id;
+    const sub=document.createElement("div"); sub.className="sub";
+    sub.textContent=genderLabel(s.gender);
+    b.appendChild(id); b.appendChild(sub);
+    b.addEventListener("click",()=>loadSample(i));
+    els.samples.appendChild(b);
+  });
+}
+
+function renderBetas(){
+  els.betaList.textContent="";
+  for(let i=0;i<10;i++){
+    const s=makeSlider("β"+i,-3,3,0.1,state.betas[i],fmt1,(v)=>{
+      state.betas[i]=v;
+      scheduleSolve(false);
+    });
+    els.betaList.appendChild(s.wrap);
+  }
+}
+function renderGender(){
+  els.genderSel.textContent="";
+  const gv=state.meta.gender_values||{};
+  for(const label of Object.keys(gv)){
+    const o=document.createElement("option");
+    o.value=String(gv[label]); o.textContent=label;
+    els.genderSel.appendChild(o);
+  }
+  els.genderSel.value=String(state.gender);
+}
+els.genderSel.addEventListener("change",()=>{
+  state.gender=Number(els.genderSel.value);
+  scheduleSolve(false);
+});
+els.resetBetas.addEventListener("click",()=>{
+  state.betas=new Array(10).fill(0);
+  renderBetas();
+  scheduleSolve(false);
+});
+
+/* ---------------- joint constraint rows UI ---------------- */
+function renderRows(){
+  els.effList.textContent="";
+  rowRefs.length=0;
+  const names=state.meta.joint_names;
+  state.rows.forEach((row,i)=>{
+    const rowEl=document.createElement("div");
+    rowEl.className="eff-row"+(i===state.selected?" selected":"");
+    rowEl.tabIndex=0;
+    rowEl.addEventListener("click",()=>selectRow(i));
+    rowEl.addEventListener("focus",()=>selectRow(i));
+
+    const ref={pos:null,eul:null,la:null,chips:null};
+
+    // one row per joint: joints used by OTHER rows are disabled in the select
+    const usedByOthers=new Set(state.rows.filter((_,k)=>k!==i).map((r)=>r.joint));
+    const top=document.createElement("div"); top.className="top";
+    const jsel=document.createElement("select");
+    names.forEach((nm,j)=>{
+      const o=document.createElement("option");
+      o.value=String(j); o.textContent=j+" "+nm;
+      o.disabled=usedByOthers.has(j);
+      jsel.appendChild(o);
+    });
+    jsel.value=String(row.joint);
+    jsel.addEventListener("change",()=>{
+      row.joint=Number(jsel.value);
+      // the WHOLE row moves: re-seed every enabled aspect from the current
+      // pose at the new joint (disabled aspects re-seed when enabled)
+      const A=row.aspects;
+      if(A.position.on) seedPositionAspect(row.joint,A.position);
+      if(A.rotation.on) seedRotationAspect(row.joint,A.rotation);
+      if(A.lookat.on) seedLookatAspect(row.joint,A.lookat);
+      renderRows();          // refresh disabled options of the other selects
+      updateGuides();
+      // lazy re-solve: pose stays put until the user actually edits a constraint
+    });
+    const del=document.createElement("button");
+    del.type="button"; del.className="eff-del"; del.textContent="✕";
+    del.title="删除此关节的所有约束";
+    del.addEventListener("click",(ev)=>{
+      ev.stopPropagation();
+      removeRow(i);
+    });
+    top.appendChild(jsel); top.appendChild(del);
+    rowEl.appendChild(top);
+
+    // aspect toggle chips [位置][旋转][朝向]
+    const chipsEl=document.createElement("div"); chipsEl.className="chips";
+    const chips={};
+    for(const key of ASPECT_KEYS){
+      const c=document.createElement("button");
+      c.type="button";
+      c.className="chip-t"+(row.aspects[key].on?" on":"");
+      c.textContent=TYPE_LABELS[key];
+      c.title=row.aspects[key].on
+        ?"已启用；点击=设为操纵目标，已是目标时再点=停用"
+        :"点击启用（按当前姿态就位，不跳变）";
+      c.addEventListener("click",(ev)=>{
+        ev.stopPropagation();
+        onChipClick(i,key);
+      });
+      chipsEl.appendChild(c); chips[key]=c;
+    }
+    ref.chips=chips;
+    rowEl.appendChild(chipsEl);
+
+    // per-aspect sub-panels (only for ENABLED aspects)
+    for(const key of ASPECT_KEYS){
+      const a=row.aspects[key];
+      if(!a.on) continue;
+      const box=document.createElement("div"); box.className="aspect";
+      const ttl=document.createElement("div"); ttl.className="ttl";
+      ttl.textContent=TYPE_LABELS[key];
+      box.appendChild(ttl);
+      const ws=makeSlider("权重",0,1,0.05,a.weight,fmt2,(v)=>{
+        a.weight=v; scheduleSolve(false);
+      });
+      box.appendChild(ws.wrap);
+      const ts=makeSlider("容差 m",0,0.10,0.005,a.tol,fmt3,(v)=>{
+        a.tol=v; scheduleSolve(false);
+      });
+      box.appendChild(ts.wrap);
+
+      if(key==="position"){
+        const x=makeXYZ(["X","Y","Z"],a.pos,0.01,3,(k,v)=>{
+          a.pos[k]=v;
+          syncMarkers(); updateGuides(); refreshAux(i);
+          needRender=true;
+          scheduleSolve(false);
+        });
+        x.inputs.forEach((inp)=>{ inp._row=i; });
+        ref.pos=x.inputs;
+        box.appendChild(x.wrap);
+      }else if(key==="rotation"){
+        const hint=document.createElement("div"); hint.className="eff-hint";
+        hint.textContent="拖 gizmo 旋转环编辑目标旋转；欧拉角输入为辅助";
+        box.appendChild(hint);
+        const eu=quatToEulerDeg(a.quat);
+        const x=makeXYZ(["X°","Y°","Z°"],eu,1,1,(k,v)=>{
+          const cur=quatToEulerDeg(a.quat);
+          cur[k]=v;
+          a.quat=eulerDegToQuat(cur[0],cur[1],cur[2]);
+          a.rot6d=quatToRot6d(a.quat);
+          syncMarkers(); refreshAux(i);
+          needRender=true;
+          scheduleSolve(false);
+        });
+        x.inputs.forEach((inp)=>{ inp._row=i; });
+        ref.eul=x.inputs;
+        box.appendChild(x.wrap);
+      }else{ // lookat
+        const dr=document.createElement("div"); dr.className="row"; dr.style.margin="4px 0";
+        const dl=document.createElement("span");
+        dl.style.cssText="font-size:11px;color:var(--muted)";
+        dl.textContent="局部朝向轴";
+        const dsel=document.createElement("select");
+        DIR_PRESETS.forEach(([lab,vec],k)=>{
+          const o=document.createElement("option");
+          o.value=String(k); o.textContent=lab;
+          dsel.appendChild(o);
+        });
+        let cur=0;
+        DIR_PRESETS.forEach(([lab,vec],k)=>{
+          if(vec[0]===a.dir[0]&&vec[1]===a.dir[1]&&vec[2]===a.dir[2]) cur=k;
+        });
+        dsel.value=String(cur);
+        dsel.addEventListener("change",()=>{
+          a.dir=DIR_PRESETS[Number(dsel.value)][1].slice();
+          seedLookatAspect(row.joint,a); // keep the constraint satisfied under the new local axis
+          renderRows();
+          syncMarkers();
+          updateGuides();
+          // lazy re-solve: axis preset change never jumps
+        });
+        dr.appendChild(dl); dr.appendChild(dsel);
+        box.appendChild(dr);
+        const x=makeXYZ(["X","Y","Z"],a.target,0.01,3,(k,v)=>{
+          a.target[k]=v;
+          syncMarkers(); updateGuides(); refreshAux(i);
+          needRender=true;
+          scheduleSolve(false);
+        });
+        x.inputs.forEach((inp)=>{ inp._row=i; });
+        ref.la=x.inputs;
+        box.appendChild(x.wrap);
+      }
+      rowEl.appendChild(box);
+    }
+
+    rowRefs.push(ref);
+    els.effList.appendChild(rowEl);
+  });
+  els.fEffCount.textContent=String(countConstraints());
+  rebuildMarkers();
+  attachGizmo();
+  needRender=true;
+}
+
+function removeRow(i){
+  if(tctrl) tctrl.detach();
+  state.rows.splice(i,1);
+  if(state.selected>=state.rows.length) state.selected=state.rows.length-1;
+  state.activeAspect=(state.selected>=0)?autoPickAspect(state.selected):null;
+  renderRows();
+  updateGuides();
+  scheduleSolve(false);
+}
+
+const ADD_PREF=[21,20,15,10,11,0];
+els.addEff.addEventListener("click",()=>{
+  if(!state.meta) return;
+  const used=new Set(state.rows.map((r)=>r.joint));
+  let joint=-1;
+  for(const j of ADD_PREF){ if(!used.has(j)){ joint=j; break; } }
+  if(joint<0){
+    for(let j=0;j<state.meta.joint_names.length;j++){ if(!used.has(j)){ joint=j; break; } }
+  }
+  if(joint<0) return; // one row per joint: every joint already has a row
+  const row={joint, aspects:mkAspects(state.meta.defaults||{})};
+  row.aspects.position.on=true;
+  seedPositionAspect(joint,row.aspects.position);
+  state.rows.push(row);
+  state.selected=state.rows.length-1;
+  state.activeAspect="position";
+  renderRows();
+  updateGuides();
+  // lazy: same rule as enabling an aspect - the new pin sits exactly on the
+  // current solved joint, already satisfied -> NO solve fired, zero jump
+});
+
+const STARTER_JOINTS=[0,15,20,21,10,11]; // pelvis, head, hands, feet
+function loadSample(i){
+  const s=state.meta.samples[i];
+  state.activeSample=i;
+  state.betas=s.betas.slice();
+  state.gender=s.gender;
+  state.gtJoints=s.gt_joints.map((p)=>p.slice());
+  state.gtRot6d=(s.gt_rot6d||[]).map((r)=>r.slice());
+  const d=state.meta.defaults||{};
+  state.rows=STARTER_JOINTS.map((j)=>{
+    const row={joint:j, aspects:mkAspects(d)};
+    row.aspects.position.on=true;
+    row.aspects.position.pos=s.gt_joints[j].slice();
+    return row;
+  });
+  state.selected=-1;
+  state.activeAspect=null;
+
+  // world-fixed ground for this sample (never updated afterwards; see header)
+  let minZ=Infinity;
+  for(const p of s.gt_joints){ if(p[2]<minZ) minZ=p[2]; }
+  state.groundZ=isFinite(minZ)?Math.min(0,minZ-0.03):0;
+
+  const p=s.gt_joints[0]; // pelvis
+  if(glOK){
+    grid.position.z=state.groundZ;
+    shadowGround.position.z=state.groundZ-0.001;
+    dirLight.position.set(p[0]+1.8,p[1]+1.2,state.groundZ+4.2);
+    dirLight.target.position.set(p[0],p[1],state.groundZ+0.9);
+    // keep the current viewing offset, retarget onto the pelvis
+    const dt=new THREE.Vector3(p[0],p[1],p[2]).sub(orbit.target);
+    camera.position.add(dt);
+    orbit.target.set(p[0],p[1],p[2]);
+    orbit.update();
+  }
+  uploadGT();
+  renderSamples();
+  renderBetas();
+  els.genderSel.value=String(state.gender);
+  renderRows();
+  updateGuides();
+  needRender=true;
+  scheduleSolve(true);
+}
+
+/* display toggles */
+function applyShow(){
+  if(!glOK) return;
+  if(meshObj) meshObj.visible=state.show.mesh;
+  if(skelObj) skelObj.visible=state.show.skel;
+  if(gtObj) gtObj.visible=state.show.gt;
+  if(markersGroup) markersGroup.visible=state.show.giz;
+  if(guideObj) guideObj.visible=state.show.giz;
+  if(grid) grid.visible=state.show.grid;
+  if(shadowGround) shadowGround.visible=state.show.grid;
+  if(tctrl){
+    tctrl.enabled=state.show.giz;
+    if(state.show.giz) attachGizmo(); else tctrl.detach();
+  }
+  needRender=true;
+}
+function bindToggle(id,key){
+  const el=document.getElementById(id);
+  el.addEventListener("change",()=>{
+    state.show[key]=el.checked;
+    applyShow();
+  });
+}
+bindToggle("tgMesh","mesh");
+bindToggle("tgSkel","skel");
+bindToggle("tgGT","gt");
+bindToggle("tgGiz","giz");
+bindToggle("tgGrid","grid");
+
+/* keyboard */
+document.addEventListener("keydown",(ev)=>{
+  if(ev.key!=="Delete") return;
+  const t=ev.target;
+  const tag=t&&t.tagName?t.tagName.toLowerCase():"";
+  if(tag==="input"||tag==="select"||tag==="textarea"||tag==="button") return;
+  if(state.selected>=0 && state.selected<state.rows.length){
+    ev.preventDefault();
+    removeRow(state.selected);
+  }
+});
+
+/* ---------------- boot ---------------- */
+function onMeta(meta){
+  state.meta=meta;
+  metaAttempt=0;
+  clearError();
+  setStatus("ok","已连接");
+  els.overlay.classList.add("hidden");
+  setupMeshBuffers(meta);
+  renderSamples();
+  renderBetas();
+  renderGender();
+  renderRows();
+  if(meta.samples && meta.samples.length){
+    loadSample(0); // start with the first sample so the mesh appears immediately
+  }
+}
+fetchMeta();
+</script>
+</body>
+</html>
