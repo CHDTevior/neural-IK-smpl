@@ -37,7 +37,7 @@ mm, lower is better.
 | Source | MPJPE | PA-MPJPE |
 |---|---:|---:|
 | Paper (SMPL-IK, AMASS, random effectors) | 59.3 | 52.5 |
-| **Ours** (canonical run, val @ epoch 13 of 120, training ongoing) | **58.39** | **53.53** |
+| **Ours** (canonical run, val @ epoch 13; campaign concluded at epoch 21 with val random MPJPE holding 58.4-59.1) | **58.39** | **53.53** |
 
 Protocol note: our numbers are the repository's own validation metrics
 (`calc_mpjpe`; MPJPE pelvis-aligned, PA-MPJPE Procrustes-aligned) computed on

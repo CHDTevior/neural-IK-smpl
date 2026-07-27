@@ -56,9 +56,9 @@ them to your site.
 
 | Line | Hardware | Status | Role |
 |---|---|---|---|
-| canonical | 1x A100-SXM4-80GB, torch 1.9.0+cu111 | **ongoing** (epoch 13+/120 at time of writing) | The reproduction of record. Unmodified command, config, and code. |
+| canonical | 1x A100-SXM4-80GB, torch 1.9.0+cu111 | **concluded at epoch 21/120** (2026-07-27, by owner decision; val random MPJPE reached the paper's 59.3 level at epoch 13 and plateaued at 58.4-59.1 thereafter) | The reproduction of record. Unmodified command, config, and code. |
 | h100x7 | 7x H100 across 4 same-node Slurm allocations, torch 2.4.1+cu124 | **terminated; kept as instability study** | Exposed the torch tie-gradient regression; its unclipped 7x lr (1.4e-3) remained spike-prone even with warmup. Evidence archived. |
-| h200x4 | 4x H200 across 2 nodes / 2 allocations, torch 2.4.1+cu124 | **ongoing** (epoch 30+ at time of writing) | Linear-scaled throughput line with warmup; survived one allocation migration + resume. |
+| h200x4 | 4x H200 across 2 nodes / 2 allocations, torch 2.4.1+cu124 | **concluded at epoch 75/120** (2026-07-27; val random MPJPE ~82.6mm and improving, but epoch-for-epoch behind canonical) | Large-batch study: naive linear scaling proved spike-prone (see docs/MULTI_GPU.md); a modernized sqrt-scaling + cosine-decay + grad-clip recipe (v4) was designed and fully reviewed but the campaign ended before deployment. |
 
 ## Current metrics
 
@@ -68,7 +68,7 @@ mm, lower is better. PA = Procrustes-aligned.
 | Source | MPJPE | PA-MPJPE |
 |---|---:|---:|
 | Paper (SMPL-IK, AMASS random effectors) | 59.3 | 52.5 |
-| Ours, canonical val @ epoch 13/120 (training ongoing) | **58.39** | **53.53** |
+| Ours, canonical val @ epoch 13/120 (final campaign metrics plateaued at this level) | **58.39** | **53.53** |
 | Ours, canonical val @ epoch 0 (first validation) | 70.24 | 60.88 |
 
 Protocol note: our numbers are the repo's own validation metrics
