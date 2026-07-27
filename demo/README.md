@@ -370,19 +370,28 @@ samples, the all-24-effector self-transfer, and two *precomputed* drag sweeps
 (right wrist on a 7x7 grid at 8 cm spacing, head on a 5x5 grid at 6 cm — every
 grid point an independent solve baked in by `run_demo_inference.py`).
 
-The committed file is a template: its data slot is
-`const DATA = /*__DATA__*/null;`. Inject the output of
-`run_demo_inference.py` to produce a self-contained page:
+**Out of the box:** this repo ships `demo/demo_data.json` (8 single-frame
+AMASS test poses with GT joints, effector sets, epoch-13 model predictions,
+the self-transfer case, and both precomputed sweeps) and the pre-injected
+`demo/offline_viewer_prebuilt.html` — open the latter directly in any browser
+(`file://` is fine), nothing else needed.
+
+Provenance/license note: `demo_data.json` is a de-minimis excerpt derived
+from the AMASS test split (8 static single-frame poses, joint coordinates and
+betas only — no motion sequences, no mesh data). It is provided solely to
+make this viewer self-contained; the AMASS license terms
+(https://amass.is.tue.mpg.de) apply to the underlying data. To regenerate it
+against your own checkpoint, run `run_demo_inference.py`.
+
+To rebuild the viewer from a fresh `demo_data.json`, the committed
+`offline_viewer.html` is the template (data slot `const DATA = /*__DATA__*/null;`):
 
 ```python
 from pathlib import Path
 html = Path("demo/offline_viewer.html").read_text()
-Path("demo/offline_viewer_final.html").write_text(
+Path("demo/offline_viewer_prebuilt.html").write_text(
     html.replace("/*__DATA__*/null", Path("demo/demo_data.json").read_text()))
-```
-
-Open `demo/offline_viewer_final.html` directly in any browser (`file://` is
-fine). Use it when you want to show results without standing up the
+``` Use it when you want to show results without standing up the
 environment — it trades interactivity (no free dragging, no mesh, no live
 solver) for zero moving parts.
 

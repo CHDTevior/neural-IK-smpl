@@ -70,3 +70,11 @@ redistributed.
 Checkpoints published at <https://huggingface.co/Tevior/neural-ik-smpl> were
 trained with the upstream non-commercial code on AMASS data using the SMPL
 body model. They are therefore usable for **non-commercial research only**.
+
+## Bundled sample data (`demo/demo_data.json`)
+
+Eight single-frame test poses (joint coordinates, betas, and model
+predictions) derived from the AMASS test split, included as a de-minimis
+excerpt so the offline viewer works out of the box. The AMASS license
+(https://amass.is.tue.mpg.de) governs the underlying data; no motion
+sequences or raw dataset files are included.
