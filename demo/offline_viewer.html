@@ -1,0 +1,304 @@
+<title>SMPL-IK 交互演示 · canonical epoch 13</title>
+<style>
+:root{
+  --bg:#0F1319; --panel:#171D26; --panel2:#1E2530; --ink:#E9ECF2; --muted:#8B95A6;
+  --line:#2A3340; --gt:#7E8CA3; --pred:#F0A044; --fx:#4FD1B5; --bad:#E5636D; --good:#63C78A;
+  --grid:#222B38;
+}
+@media (prefers-color-scheme: light){
+  :root{ --bg:#EFF1F4; --panel:#FFFFFF; --panel2:#F5F7FA; --ink:#1B2129; --muted:#5C6675;
+         --line:#D8DDE5; --gt:#5D6A80; --pred:#C97A17; --fx:#0F8D77; --bad:#C2404B; --good:#2E9459; --grid:#DCE1E8; }
+}
+:root[data-theme="dark"]{ --bg:#0F1319; --panel:#171D26; --panel2:#1E2530; --ink:#E9ECF2; --muted:#8B95A6;
+  --line:#2A3340; --gt:#7E8CA3; --pred:#F0A044; --fx:#4FD1B5; --bad:#E5636D; --good:#63C78A; --grid:#222B38; }
+:root[data-theme="light"]{ --bg:#EFF1F4; --panel:#FFFFFF; --panel2:#F5F7FA; --ink:#1B2129; --muted:#5C6675;
+  --line:#D8DDE5; --gt:#5D6A80; --pred:#C97A17; --fx:#0F8D77; --bad:#C2404B; --good:#2E9459; --grid:#DCE1E8; }
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);
+  font:14px/1.5 ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,"PingFang SC","Microsoft YaHei",sans-serif;}
+.num{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-variant-numeric:tabular-nums;}
+header{display:flex;align-items:center;gap:14px;padding:12px 18px;border-bottom:1px solid var(--line);flex-wrap:wrap;}
+header h1{font-size:16px;margin:0;font-weight:650;letter-spacing:.2px;}
+.chip{display:inline-flex;align-items:center;gap:6px;padding:2px 10px;border-radius:999px;border:1px solid var(--line);
+  background:var(--panel);font-size:12px;color:var(--muted);}
+.chip b{color:var(--ink);font-weight:600;}
+.dot{width:9px;height:9px;border-radius:50%;display:inline-block;}
+main{display:flex;gap:0;height:calc(100vh - 55px);min-height:520px;}
+#stage{flex:1;position:relative;min-width:0;}
+canvas{display:block;width:100%;height:100%;cursor:grab;touch-action:none;}
+canvas.dragging{cursor:grabbing;}
+canvas.handle{cursor:pointer;}
+.hud{position:absolute;left:14px;bottom:12px;display:flex;gap:8px;flex-wrap:wrap;pointer-events:none;}
+.hud .chip{background:color-mix(in srgb, var(--panel) 82%, transparent);backdrop-filter:blur(4px);}
+.hint{position:absolute;right:14px;bottom:12px;color:var(--muted);font-size:12px;pointer-events:none;
+  background:color-mix(in srgb, var(--panel) 82%, transparent);padding:3px 10px;border-radius:999px;border:1px solid var(--line);}
+aside{width:292px;flex-shrink:0;border-left:1px solid var(--line);background:var(--panel);
+  overflow-y:auto;padding:14px;display:flex;flex-direction:column;gap:14px;}
+h2{font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);margin:0 0 8px;font-weight:600;}
+.tabs{display:flex;gap:6px;flex-wrap:wrap;}
+.tab{flex:1;min-width:80px;padding:7px 8px;border:1px solid var(--line);border-radius:8px;background:var(--panel2);
+  color:var(--muted);text-align:center;cursor:pointer;font-size:13px;user-select:none;}
+.tab.on{border-color:var(--pred);color:var(--ink);background:color-mix(in srgb, var(--pred) 14%, var(--panel2));}
+.tab:focus-visible,.card:focus-visible,.tog:focus-visible{outline:2px solid var(--fx);outline-offset:2px;}
+.cards{display:flex;flex-direction:column;gap:6px;}
+.card{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 10px;border:1px solid var(--line);
+  border-radius:8px;background:var(--panel2);cursor:pointer;user-select:none;}
+.card.on{border-color:var(--fx);background:color-mix(in srgb, var(--fx) 10%, var(--panel2));}
+.card .m{font-size:12px;padding:1px 8px;border-radius:999px;color:#fff;}
+.togs{display:flex;flex-direction:column;gap:6px;}
+.tog{display:flex;align-items:center;gap:8px;cursor:pointer;user-select:none;color:var(--ink);}
+.tog input{accent-color:var(--pred);}
+.legend{display:flex;flex-direction:column;gap:6px;font-size:13px;color:var(--muted);}
+.note{font-size:12px;color:var(--muted);border-top:1px solid var(--line);padding-top:10px;line-height:1.6;}
+@media (max-width:760px){ main{flex-direction:column;height:auto;} #stage{height:62vh;} aside{width:100%;border-left:none;border-top:1px solid var(--line);} }
+</style>
+
+<header>
+  <h1>SMPL-IK 交互演示</h1>
+  <span class="chip">checkpoint <b>canonical&nbsp;epoch&nbsp;13</b></span>
+  <span class="chip">val random MPJPE <b class="num">58.4&nbsp;mm</b>（论文 59.3）</span>
+  <span class="chip">8 样本均值 <b class="num">25.1&nbsp;mm</b>（fixed 6 效应器）</span>
+</header>
+<main>
+  <div id="stage">
+    <canvas id="cv"></canvas>
+    <div class="hud" id="hud"></div>
+    <div class="hint" id="hint">拖动旋转 · 滚轮缩放</div>
+  </div>
+  <aside>
+    <div><h2>模式</h2>
+      <div class="tabs">
+        <div class="tab on" data-mode="compare" tabindex="0">姿态对比</div>
+        <div class="tab" data-mode="sweep0" tabindex="0">拖右手腕</div>
+        <div class="tab" data-mode="sweep1" tabindex="0">拖头部</div>
+      </div>
+    </div>
+    <div id="samplebox"><h2>测试样本（MPJPE）</h2><div class="cards" id="cards"></div></div>
+    <div><h2>图层</h2>
+      <div class="togs">
+        <label class="tog"><input type="checkbox" id="tGT" checked><span class="dot" style="background:var(--gt)"></span>真值骨架 (GT)</label>
+        <label class="tog"><input type="checkbox" id="tPR" checked><span class="dot" style="background:var(--pred)"></span>模型预测 (FK)</label>
+        <label class="tog"><input type="checkbox" id="tFX" checked><span class="dot" style="background:var(--fx)"></span>效应器目标</label>
+      </div>
+    </div>
+    <div class="legend" id="legend"></div>
+    <div class="note" id="note"></div>
+  </aside>
+</main>
+
+<script>
+const DATA = /*__DATA__*/null;
+
+const cv = document.getElementById('cv'), ctx = cv.getContext('2d');
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const P = DATA.parents;
+
+// ---------- state ----------
+let mode = 'compare';           // compare | sweep0 | sweep1
+let sampleIdx = 0;              // index into DATA.samples
+let selfTransfer = false;
+let gridIdx = {sweep0: centerIdx(0), sweep1: centerIdx(1)};
+let cam = {yaw: 0.6, pitch: 0.32, zoom: 1};
+let shown = null;               // displayed (possibly interpolating) pred pose
+let target = null;              // pose we are interpolating toward
+let animT = 1;
+function centerIdx(s){ const g = DATA.sweeps[s].grid_shape; return Math.floor(g[0]*g[1]/2); }
+
+// ---------- helpers ----------
+const sub=(a,b)=>[a[0]-b[0],a[1]-b[1],a[2]-b[2]];
+function centroid(js){ let c=[0,0,0]; js.forEach(p=>{c[0]+=p[0];c[1]+=p[1];c[2]+=p[2];}); return c.map(v=>v/js.length); }
+function curSample(){ return mode==='compare' ? DATA.samples[sampleIdx] : DATA.samples.find(s=>s.id===DATA.sweeps[sw()].sample_id); }
+function sw(){ return mode==='sweep0'?0:1; }
+function curPred(){
+  if(mode==='compare') return selfTransfer ? DATA.self_transfer.pred : DATA.samples[sampleIdx].pred;
+  const s = DATA.sweeps[sw()]; return s.preds[gridIdx[mode]];
+}
+function curEffectors(){
+  if(mode==='compare'){
+    const s = DATA.samples[sampleIdx];
+    return s.effector_ids.map((id,i)=>({id, pos:s.effector_targets[i], swept:false}));
+  }
+  const s = DATA.sweeps[sw()];
+  return s.effector_ids.map((id,i)=>{
+    const sweptJoint = s.name==='right_wrist'?21:15;
+    if(id===sweptJoint) return {id, pos:s.grid_points[gridIdx[mode]], swept:true};
+    return {id, pos:s.base_targets[i], swept:false};
+  });
+}
+
+// ---------- projection (z-up world) ----------
+function project(p, c, W, H){
+  const x=p[0]-c[0], y=p[1]-c[1], z=p[2]-c[2];
+  const cy=Math.cos(cam.yaw), sy=Math.sin(cam.yaw);
+  const x1=cy*x+sy*y, y1=-sy*x+cy*y;
+  const cp=Math.cos(cam.pitch), sp=Math.sin(cam.pitch);
+  const y2=cp*y1-sp*z, z2=sp*y1+cp*z;
+  const S = Math.min(W,H)*0.42*cam.zoom;
+  return [W/2 + x1*S, H*0.52 - z2*S, y2];
+}
+
+// ---------- drawing ----------
+function drawSkeleton(js, c, W, H, color, lw, dots){
+  const segs=[];
+  for(let i=1;i<24;i++){ segs.push([js[i], js[P[i]]]); }
+  segs.map(s=>({s, d:(project(s[0],c,W,H)[2]+project(s[1],c,W,H)[2])/2}))
+      .sort((a,b)=>b.d-a.d)
+      .forEach(({s})=>{
+        const a=project(s[0],c,W,H), b=project(s[1],c,W,H);
+        ctx.strokeStyle=color; ctx.lineWidth=lw; ctx.lineCap='round';
+        ctx.beginPath(); ctx.moveTo(a[0],a[1]); ctx.lineTo(b[0],b[1]); ctx.stroke();
+      });
+  if(dots) js.forEach(p=>{ const q=project(p,c,W,H);
+    ctx.fillStyle=color; ctx.beginPath(); ctx.arc(q[0],q[1],lw*0.9,0,7); ctx.fill(); });
+}
+function drawGrid(c, zmin, W, H){
+  ctx.strokeStyle=css('--grid'); ctx.lineWidth=1;
+  const R=1.2, N=6;
+  for(let i=-N;i<=N;i++){
+    const t=i*R/N;
+    let a=project([c[0]+t,c[1]-R,zmin],c,W,H), b=project([c[0]+t,c[1]+R,zmin],c,W,H);
+    ctx.beginPath();ctx.moveTo(a[0],a[1]);ctx.lineTo(b[0],b[1]);ctx.stroke();
+    a=project([c[0]-R,c[1]+t,zmin],c,W,H); b=project([c[0]+R,c[1]+t,zmin],c,W,H);
+    ctx.beginPath();ctx.moveTo(a[0],a[1]);ctx.lineTo(b[0],b[1]);ctx.stroke();
+  }
+}
+let handleScreen=null;
+function render(){
+  const W=cv.clientWidth, H=cv.clientHeight;
+  if(cv.width!==W*devicePixelRatio){ cv.width=W*devicePixelRatio; cv.height=H*devicePixelRatio; }
+  ctx.setTransform(devicePixelRatio,0,0,devicePixelRatio,0,0);
+  ctx.clearRect(0,0,W,H);
+  const gt = curSample().gt;
+  const c = centroid(gt);
+  const zmin = Math.min(...gt.map(p=>p[2])) - 0.02;
+  drawGrid(c, zmin, W, H);
+  if(document.getElementById('tGT').checked) drawSkeleton(gt, c, W, H, css('--gt'), 2.4, false);
+  if(document.getElementById('tPR').checked && shown) drawSkeleton(shown, c, W, H, css('--pred'), 3.6, true);
+  handleScreen=null;
+  if(document.getElementById('tFX').checked){
+    curEffectors().forEach(e=>{
+      const q=project(e.pos,c,W,H);
+      ctx.strokeStyle=css('--fx'); ctx.lineWidth=e.swept?3:2;
+      ctx.beginPath(); ctx.arc(q[0],q[1], e.swept?11:6, 0, 7); ctx.stroke();
+      if(e.swept){ ctx.fillStyle=css('--fx'); ctx.globalAlpha=.28;
+        ctx.beginPath(); ctx.arc(q[0],q[1],11,0,7); ctx.fill(); ctx.globalAlpha=1;
+        handleScreen=[q[0],q[1]];
+      }
+    });
+  }
+}
+
+// ---------- pose animation ----------
+function setTarget(pose){
+  if(reduced || !shown){ shown = pose.map(p=>p.slice()); target=null; render(); return; }
+  target = pose; animT = 0;
+  requestAnimationFrame(step);
+}
+function step(){
+  if(!target) return;
+  animT = Math.min(1, animT + 0.18);
+  const e = 1-Math.pow(1-animT,2);
+  shown = shown.map((p,i)=>[0,1,2].map(k=>p[k]+(target[i][k]-p[k])*e));
+  render();
+  if(animT<1) requestAnimationFrame(step); else { shown=target.map(p=>p.slice()); target=null; render(); }
+}
+
+// ---------- HUD ----------
+function fmt(x){ return (Math.round(x*10)/10).toFixed(1); }
+function updateHUD(){
+  const hud=document.getElementById('hud');
+  if(mode==='compare'){
+    const s=DATA.samples[sampleIdx];
+    const v = selfTransfer ? DATA.self_transfer.mpjpe_mm : s.mpjpe_mm;
+    hud.innerHTML = `<span class="chip">样本 <b>#${s.id}</b>${selfTransfer?' · 全效应器自检':''}</span>
+      <span class="chip">MPJPE <b class="num">${fmt(v)} mm</b></span>
+      <span class="chip">效应器 <b class="num">${selfTransfer?24:s.effector_ids.length}</b> 个</span>`;
+    document.getElementById('hint').textContent='拖动旋转 · 滚轮缩放';
+  } else {
+    const s=DATA.sweeps[sw()], gi=gridIdx[mode];
+    const jid = s.name==='right_wrist'?21:15;
+    const tp = s.grid_points[gi], pp = s.preds[gi][jid];
+    const err = Math.hypot(tp[0]-pp[0],tp[1]-pp[1],tp[2]-pp[2])*1000;
+    const base = s.name==='right_wrist' ? s.grid_points[centerIdx(0)] : s.grid_points[centerIdx(1)];
+    const off = Math.hypot(tp[0]-base[0],tp[1]-base[1],tp[2]-base[2])*100;
+    hud.innerHTML = `<span class="chip">${s.name==='right_wrist'?'右手腕':'头部'}目标偏移 <b class="num">${fmt(off)} cm</b></span>
+      <span class="chip">末端跟踪误差 <b class="num" style="color:${err>120?'var(--bad)':err>60?'var(--pred)':'var(--good)'}">${fmt(err)} mm</b></span>`;
+    document.getElementById('hint').textContent='拖动青色手柄移动目标 · 空白处拖动旋转';
+  }
+}
+
+// ---------- interactions ----------
+let drag=null;
+cv.addEventListener('pointerdown', ev=>{
+  cv.setPointerCapture(ev.pointerId);
+  const r=cv.getBoundingClientRect(), x=ev.clientX-r.left, y=ev.clientY-r.top;
+  if(mode!=='compare' && handleScreen && Math.hypot(x-handleScreen[0],y-handleScreen[1])<20){
+    drag={kind:'handle'};
+  } else drag={kind:'orbit', x:ev.clientX, y:ev.clientY, yaw:cam.yaw, pitch:cam.pitch};
+  cv.classList.add('dragging');
+});
+cv.addEventListener('pointermove', ev=>{
+  const r=cv.getBoundingClientRect(), x=ev.clientX-r.left, y=ev.clientY-r.top;
+  if(!drag){
+    cv.classList.toggle('handle', mode!=='compare' && handleScreen && Math.hypot(x-handleScreen[0],y-handleScreen[1])<20);
+    return;
+  }
+  if(drag.kind==='orbit'){
+    cam.yaw = drag.yaw + (ev.clientX-drag.x)*0.008;
+    cam.pitch = Math.max(-1.3, Math.min(1.3, drag.pitch + (ev.clientY-drag.y)*0.006));
+    render();
+  } else {
+    const s=DATA.sweeps[sw()], gt=curSample().gt, c=centroid(gt);
+    const W=cv.clientWidth, H=cv.clientHeight;
+    let best=0, bd=1e9;
+    s.grid_points.forEach((p,i)=>{
+      const q=project(p,c,W,H), d=Math.hypot(x-q[0],y-q[1]);
+      if(d<bd){bd=d;best=i;}
+    });
+    if(best!==gridIdx[mode]){ gridIdx[mode]=best; setTarget(curPred()); updateHUD(); }
+    render();
+  }
+});
+['pointerup','pointercancel'].forEach(e=>cv.addEventListener(e, ()=>{drag=null;cv.classList.remove('dragging');}));
+cv.addEventListener('wheel', ev=>{ ev.preventDefault();
+  cam.zoom=Math.max(.4,Math.min(3,cam.zoom*(ev.deltaY<0?1.08:0.93))); render(); },{passive:false});
+
+// ---------- UI wiring ----------
+function chipColor(v){ return v<20?'var(--good)':v<30?'var(--pred)':'var(--bad)'; }
+function buildCards(){
+  const box=document.getElementById('cards'); box.innerHTML='';
+  DATA.samples.forEach((s,i)=>{
+    const d=document.createElement('div'); d.className='card'+(i===sampleIdx&&!selfTransfer?' on':''); d.tabIndex=0;
+    d.innerHTML=`<span>样本 #${s.id}</span><span class="m num" style="background:${chipColor(s.mpjpe_mm)}">${fmt(s.mpjpe_mm)}</span>`;
+    d.onclick=()=>{ sampleIdx=i; selfTransfer=false; refresh(); };
+    d.onkeydown=e=>{if(e.key==='Enter')d.onclick();};
+    box.appendChild(d);
+  });
+  const st=document.createElement('div');
+  st.className='card'+(selfTransfer?' on':''); st.tabIndex=0;
+  st.innerHTML=`<span>全效应器自检 #${DATA.self_transfer.sample_id}</span>
+    <span class="m num" style="background:${chipColor(DATA.self_transfer.mpjpe_mm)}">${fmt(DATA.self_transfer.mpjpe_mm)}</span>`;
+  st.onclick=()=>{ selfTransfer=true; sampleIdx=DATA.samples.findIndex(s=>s.id===DATA.self_transfer.sample_id); refresh(); };
+  st.onkeydown=e=>{if(e.key==='Enter')st.onclick();};
+  box.appendChild(st);
+}
+document.querySelectorAll('.tab').forEach(t=>{
+  const go=()=>{ document.querySelectorAll('.tab').forEach(x=>x.classList.remove('on'));
+    t.classList.add('on'); mode=t.dataset.mode;
+    document.getElementById('samplebox').style.display = mode==='compare'?'':'none';
+    refresh(); };
+  t.onclick=go; t.onkeydown=e=>{if(e.key==='Enter')go();};
+});
+['tGT','tPR','tFX'].forEach(id=>document.getElementById(id).onchange=render);
+document.getElementById('legend').innerHTML =
+  `<span><span class="dot" style="background:var(--gt)"></span> 真值（mocap GT）</span>
+   <span><span class="dot" style="background:var(--pred)"></span> 模型解算（FK 后关节位置）</span>
+   <span><span class="dot" style="background:var(--fx)"></span> 输入给模型的效应器目标</span>`;
+document.getElementById('note').innerHTML =
+  `拖拽模式：其余效应器（骨盆、头/腕、双脚）固定在真值位置，仅移动高亮目标，网格上每个位置都是模型独立解算的整身姿态。把目标拖到极端位置时，模型的姿态先验会“抵抗”不可达目标——末端误差随之增大，这是预期行为而非缺陷。数据：AMASS 测试集 block 0，8 样本，canonical epoch-13 checkpoint（val random MPJPE 58.4mm，论文基准 59.3）。单位：米（显示为 mm/cm）。`;
+function refresh(){ buildCards(); shown=null; setTarget(curPred()); updateHUD(); render(); }
+new ResizeObserver(()=>render()).observe(cv);
+new MutationObserver(()=>render()).observe(document.documentElement,{attributes:true,attributeFilter:['data-theme']});
+refresh();
+</script>

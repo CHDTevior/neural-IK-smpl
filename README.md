@@ -288,18 +288,29 @@ export SMPLIK_CKPT=$PWD/weights/smplik_amass_canonical_epoch13.ckpt
 
 Open <http://localhost:8899>. Features:
 
-- **Multi-constraint joints:** any of the 24 SMPL joints can carry position,
-  rotation (ortho6d world), and look-at effectors simultaneously, each with
-  per-effector weight and tolerance — mirroring the model's native input
-  exactly (`demo/server.py` documents the encodings).
-- **three.js gizmos:** translate/rotate `TransformControls` per effector,
-  orbit camera, GT-vs-prediction skeleton overlay, and the full 6890-vertex
-  skinned SMPL mesh returned by the gendered FK path.
-- Test-set sample poses, per-solve latency readout, and a fail-loud GT
-  consistency check at startup.
+- **Multi-aspect constraints:** any of the 24 SMPL joints can carry
+  position, rotation (ortho6d world), and look-at constraints
+  *simultaneously* — pin the pelvis into a squat and rotate it at the same
+  time — each with per-constraint weight and tolerance, mirroring the
+  model's native input exactly.
+- **No-jump interaction:** new constraints seed already-satisfied from the
+  current solved state, re-solves are lazy, and replies blend in over 180 ms
+  — enabling/switching constraints never teleports the body.
+- **Full mesh rendering:** the 6890-vertex skinned SMPL mesh from the
+  gendered FK path (not just a stick figure), plus GT-vs-prediction skeleton
+  overlay, three.js translate/rotate gizmos, and a per-solve latency readout.
+- Test-set sample poses, a fail-loud GT consistency check at startup, and a
+  server-less static viewer (`demo/offline_viewer.html`) fed by the same
+  `run_demo_inference.py` output.
 - Optional auth for exposing it beyond localhost, **env-driven only** (no
   secrets in code or repo): `DEMO_AUTH="user:pass"` enables HTTP Basic;
   `DEMO_TOKEN=<random>` additionally allows `?k=<token>` cookie login.
+
+Complete run/configuration/HTTP-API reference (including public exposure via
+a cloudflared quick tunnel or SSH port-forward): **[`demo/README.md`](demo/README.md)**.
+How the demo maps constraints onto the model, the no-jump design, the rot6d
+rows-vs-columns catch, and the numerical verification gates:
+**[`docs/DEMO_ALGORITHMS.md`](docs/DEMO_ALGORITHMS.md)**.
 
 ## Troubleshooting
 
